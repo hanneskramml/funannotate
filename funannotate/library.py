@@ -341,7 +341,7 @@ def print_table(table, alignments='', max_col_width=30, col_separation=3, indent
             for text, colour_name in list(sub_colour.items()):
                 row_str = row_str.replace(text, colour(text, colour_name))
             if j < row_rows - 1 and UNDERLINE in row_str:
-                row_str = re.sub(r'\033\[4m', '', row_str)
+                row_str = re.sub('\033\[4m', '', row_str)
             if return_str:
                 full_table_str += indenter + row_str + '\n'
             else:
@@ -598,13 +598,13 @@ def CheckFASTQandFix(forward, reverse, cpus=2):
             if read1[0].split(' ', 1)[1].startswith('1') and read2[0].split(' ', 1)[1].startswith('2'):
                 break
             else:
-                log.debug(f"R1 header: {read1[0]} and R2 header: {read2[0]} are not 1 and 2 as expected")
+                log.debug("R1 header: {} and R2 header: {} are not 1 and 2 as expected".format(read1[0],read2[0]))
                 check = False
                 break
         elif read1[0].endswith('/1') and read2[0].endswith('/2'):  # also acceptable
             break
         else:  # it is not okay missing paired information
-            log.debug(f"R1 header: {read1[0]} and R2 header: {read2[0]} are missing pairing as expected")
+            log.debug("R1 header: {} and R2 header: {} are missing pairing as expected".format(read1[0],read2[0]))
             check = False
             break
     file1.close()
@@ -693,8 +693,7 @@ def process_handle(handle, mode="w"):
             output.close()
 
 
-def runSubprocess(cmd, directory, logfile, capture_output=True, capture_error=True, in_file=None, only_failed=False,
-                  raise_not_exit=False):
+def runSubprocess(cmd, directory, logfile, capture_output=True, capture_error=True, in_file=None, only_failed=False):
     """
     Runs a command using subprocess.run and directs output and stderr. If output or error are captured, they will be
     written to logfile.debug if the command succeeds, or logfile.error if the command fails.
@@ -714,9 +713,6 @@ def runSubprocess(cmd, directory, logfile, capture_output=True, capture_error=Tr
     :param only_failed: only write stdout/stderr to the logfile if the command fails (returns a non-zero exit status).
                        This only effects stdout/stderr if it's being captured (output/error == True)
     :type only_failed: bool
-    :param raise_not_exit: raise a subprocess.CalledProcessError if the subprocess fails, rather than sys.exit(1).
-                           Default is False
-    :type raise_not_exit: bool
     """
 
     def logoutput(logname, process_result):
@@ -737,10 +733,7 @@ def runSubprocess(cmd, directory, logfile, capture_output=True, capture_error=Tr
     except subprocess.CalledProcessError as e:
         logfile.error(f"CMD ERROR: {' '.join(cmd)}")
         logoutput(logfile.error, process)
-        if raise_not_exit:
-            raise (e)
-        else:
-            sys.exit(1)  # this should probably be replaced with raise(e) and more messages
+        sys.exit(1)  # this should probably be replaced with raise(e) and more messages
 
 
 def evmGFFvalidate(input, evmpath, logfile):
@@ -964,7 +957,7 @@ def getGeneBasename(fastafile):
                     Base = line.split('-')[0]
                 else:
                     Base = gene
-                if Base not in bases:
+                if not Base in bases:
                     bases.append(Base)
     return bases
 
@@ -1021,9 +1014,7 @@ def checkAugustusFunc():
         log.error("Testing Augustus Error: installation seems wrong, can't find prfl model")
         sys.exit(1)
     profile = '--proteinprofile='+model
-    aug_cmd = ['augustus', '--species=anidulans', profile, os.path.join(parentdir, 'config', 'busco_test.fa')]
-    log.debug(' '.join(aug_cmd))
-    proc = subprocess.Popen(aug_cmd,
+    proc = subprocess.Popen(['augustus', '--species=anidulans', profile, os.path.join(parentdir, 'config', 'busco_test.fa')],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     stdout, stderr = proc.communicate()
     stderr = stderr.strip()
@@ -1083,9 +1074,9 @@ def maker2evm(inputfile, outputdir):
                                 trout.write('\t'.join(cols))
 
 
-def flatten(lst):
+def flatten(l):
     flatList = []
-    for elem in lst:
+    for elem in l:
         # if an element of a list is a list
         # iterate over this list and add elements to flatList
         if type(elem) == list:
@@ -1233,7 +1224,7 @@ def countEVMpredictions(input):
                 '\t')
             if feature == 'gene':
                 Counts['total'] += 1
-                if source not in Counts:
+                if not source in Counts:
                     Counts[source] = 1
                 else:
                     Counts[source] += 1
@@ -1260,20 +1251,24 @@ def runMultiProgress(function, inputList, cpus, progress=True):
     # refresh pbar every 5 seconds
     if progress:
         while True:
-            completed, failed, remaining = 0, 0, 0
-            for x in results:
-                try:
-                    if x.successful():
-                        completed += 1
-                    else:
-                        failed += 1
-                except ValueError:
-                    remaining += 1
-            sys.stdout.write(f"     Progress: {completed} complete, {failed} failed, {remaining} remaining        \r")
-            if remaining == 0 and completed + failed == tasks:
-                sys.stdout.write("\n")
+            incomplete_count = sum(1 for x in results if not x.ready())
+            if incomplete_count == 0:
                 break
+            sys.stdout.write("     Progress: %.2f%% \r" %
+                            (float(tasks - incomplete_count) / tasks * 100))
+            sys.stdout.flush()
             time.sleep(1)
+    p.close()
+    p.join()
+
+
+def runMultiNoProgress(function, inputList, cpus):
+    # setup pool
+    p = multiprocessing.Pool(cpus)
+    # setup results and split over cpus
+    results = []
+    for i in inputList:
+        results.append(p.apply_async(function, [i]))
     p.close()
     p.join()
 
@@ -1299,7 +1294,7 @@ def cleanProteins(inputList, output):
                     for i in badshit:
                         if i in ID:
                             ID = ID.replace(i, '_')
-                    if ID not in seen:
+                    if not ID in seen:
                         seen.add(ID)
                     else:
                         # means that ID has already been used, so add a number to it, auto increment
@@ -1314,8 +1309,8 @@ def cleanProteins(inputList, output):
 
 
 def genemark2busco(genemark, bedfile, output):
-    # function to load coords into Interlap from bedfile, then pull out
-    # genemark EVM gff3 format
+    #function to load coords into Interlap from bedfile, then pull out
+    #genemark EVM gff3 format
     counter = 0
     inter = bed2interlap(bedfile)
     with open(output, 'w') as outfile:
@@ -1333,7 +1328,6 @@ def genemark2busco(genemark, bedfile, output):
                     counter += 1
                     outfile.write('{}'.format(''.join(gene_model)))
     return counter
-
 
 def evidence2busco(evidence, bedfile, output):
     counter = 0
@@ -1406,7 +1400,7 @@ def fix_busco_naming(busco_infile, genome, augustus, gffout, ploidy=1,
             newblock = newblock.replace('Augustus%20prediction', name)
             newblock = newblock.replace(ID, newID)
             output.write(newblock+'\n')
-    # write to GFF3 properly and fix CDS
+    #write to GFF3 properly and fix CDS
     Genes = {}
     Genes = gff2dict(tmpOut, genome, Genes)
     dict2gff3(Genes, gffout)
@@ -1562,7 +1556,7 @@ def analyzeAssembly(input, header_max=16):
             characters = {}
             for nuc in seq:
                 nuc = nuc.upper()
-                if nuc not in characters:
+                if not nuc in characters:
                     characters[nuc] = 1
                 else:
                     characters[nuc] += 1
@@ -1643,7 +1637,7 @@ def tokenizeString(aString, separators):
         else:
             if listToReturn == []:
                 listToReturn = [""]
-            if listToReturn[-1] in separators:
+            if(listToReturn[-1] in separators):
                 listToReturn += [""]
             listToReturn[-1] += aString[i]
             i += 1
@@ -1744,12 +1738,6 @@ def bam2gff3(input, output):
 
 def bam2ExonsHints(input, gff3, hints):
     count = 0
-    gtag = 'genome'
-    btag = 'b2h'
-    etag = 'ep'
-    extag = 'exon'
-    introntag = 'intron'
-    emptyscore = '.'
     with open(gff3, 'w') as gffout:
         gffout.write('##gff-version 3\n')
         with open(hints, 'w') as hintsout:
@@ -1845,16 +1833,20 @@ def bam2ExonsHints(input, gff3, hints):
                         end = exon[1]-1
                         qstart = queries[i][0]
                         qend = queries[i][1]
-
                         if i == 0 or i == len(exons)-1:
-                            gffout.write(f'{cols[2]}\t{gtag}\t{feature}\t{start}\t{end}\t{pident:.2f}\t{strand}\t{emptyscore}\tID=minimap2_{num+1};Target={cols[0]} {qstart} {qend} {strand}\n')
-                            hintsout.write(f'{cols[2]}\t{btag}\t{etag}\t{start}\t{end}\t0\t{strand}\t{emptyscore}\tgrp=minimap2_{num+1};pri=4;src=E\n')
+                            gffout.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:.2f}\t{:}\t{:}\tID=minimap2_{:};Target={:} {:} {:} {:}\n'.format(
+                                cols[2], 'genome', feature, start, end, pident, strand, '.', num+1, cols[0], qstart, qend, strand))
+                            hintsout.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\tgrp=minimap2_{:};pri=4;src=E\n'.format(
+                                cols[2], 'b2h', 'ep', start, end, 0, strand, '.', num+1, cols[0]))
                         else:
-                            gffout.write(f'{cols[2]}\t{gtag}\t{feature}\t{start}\t{end}\t{pident:.2f}\t{strand}\t{emptyscore}\tID=minimap2_{num+1};Target={cols[0]} {qstart} {qend} {strand}\n')
-                            hintsout.write(f'{cols[2]}\t{btag}\t{extag}\t{start}\t{end}\t0\t{strand}\t{emptyscore}\tgrp=minimap2_{num+1};pri=4;src=E\n')
+                            gffout.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:.2f}\t{:}\t{:}\tID=minimap2_{:};Target={:} {:} {:} {:}\n'.format(
+                                cols[2], 'genome', feature, start, end, pident, strand, '.', num+1, cols[0], qstart, qend, strand))
+                            hintsout.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\tgrp=minimap2_{:};pri=4;src=E\n'.format(
+                                cols[2], 'b2h', 'exon', start, end, 0, strand, '.', num+1, cols[0]))
                     if len(introns) > 0:
                         for z in introns:
-                            hintsout.write(f'{cols[2]}\t{btag}\t{introntag}\t{z[0]}\t{z[1]}\t{1}\t{strand}\t{emptyscore}\tgrp=minimap2_{num+1};pri=4;src=E\n')
+                            hintsout.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\tgrp=minimap2_{:};pri=4;src=E\n'.format(
+                                cols[2], 'b2h', 'intron', z[0], z[1], 1, strand, '.', num+1, cols[0]))
     return count
 
 
@@ -2016,7 +2008,7 @@ def convertgff2tbl(gff, prefix, fasta, prots, trans, tblout, external=False):
     scaffLen = {}
     with open(fasta, 'r') as seqin:
         for record in SeqIO.parse(seqin, 'fasta'):
-            if record.id not in scaffLen:
+            if not record.id in scaffLen:
                 scaffLen[record.id] = len(record.seq)
     # get partialStart/stop info and load scaffold dictionary with coordinates of Genes
     sGenes = sorted(iter(Genes.items()), key=_sortDict)
@@ -2029,7 +2021,7 @@ def convertgff2tbl(gff, prefix, fasta, prots, trans, tblout, external=False):
             locusTag = k
         else:
             locusTag = prefix+'_'+str(counter).zfill(6)
-        if locusTag not in renamedGenes:
+        if not locusTag in renamedGenes:
             renamedGenes[locusTag] = v
             if not v['contig'] in scaff2genes:
                 scaff2genes[v['contig']] = [locusTag]
@@ -2044,7 +2036,7 @@ def convertgff2tbl(gff, prefix, fasta, prots, trans, tblout, external=False):
     geneDB = {}
     for k, v in list(renamedGenes.items()):
         for x in v['ids']:
-            if x not in geneDB:
+            if not x in geneDB:
                 geneDB[x] = k
 
     # write to protein and transcripts
@@ -2081,7 +2073,7 @@ def tblfilter(input, remove, output):
             if line.startswith('#') or line.startswith('\n'):
                 continue
             line = line.strip()
-            if line not in removeModels:
+            if not line in removeModels:
                 removeModels.append(line)
     # now loop through tbl file and get line positions of gene models
     found = []
@@ -2095,7 +2087,7 @@ def tblfilter(input, remove, output):
                     for x in gene:
                         if x.startswith('\t\t\tlocus_tag\t'):
                             locusTag = x.split('\t')[-1].rstrip()
-                    if locusTag and locusTag not in removeModels:
+                    if locusTag and not locusTag in removeModels:
                         outfile.write(''.join(gene))
                     else:
                         if not locusTag:
@@ -2134,10 +2126,10 @@ def annotations2dict(input, geneDB={}, custom=False):
                         geneID = ID
             else:
                 geneID = ID
-            if geneID not in Annotations:
+            if not geneID in Annotations:
                 Annotations[geneID] = {refDB: [description]}
             else:
-                if refDB not in Annotations[geneID]:
+                if not refDB in Annotations[geneID]:
                     Annotations[geneID][refDB] = [description]
                 else:
                     Annotations[geneID][refDB].append(description)
@@ -2169,14 +2161,14 @@ def annotations2dict(input, geneDB={}, custom=False):
                             geneID = ID
                 else:
                     geneID = ID
-                if geneID not in Annotations:
+                if not geneID in Annotations:
                     Annotations[geneID] = {refDB: [description]}
                 else:
-                    if refDB not in Annotations[geneID]:
+                    if not refDB in Annotations[geneID]:
                         Annotations[geneID][refDB] = [description]
                     elif refDB == 'name':
                         previousNames = Annotations[geneID][refDB]
-                        if 'gene_synonym' not in Annotations[geneID]:
+                        if not 'gene_synonym' in Annotations[geneID]:
                             Annotations[geneID]['gene_synonym'] = previousNames
                         else:
                             Annotations[geneID]['gene_synonym'] += previousNames
@@ -2243,12 +2235,12 @@ def updateTBL(input, annotDict, output, prefix=False, newtag=False):
                                         outfile.write('\t\t\tgene_synonym\t%s\n' % z)
                                 outfile.write(line)
                             elif line.startswith('\t\t\tproduct\t'):
-                                if 'product' not in geneAnnot:
+                                if not 'product' in geneAnnot:
                                     outfile.write(line)
                             elif line.startswith('\t\t\ttranscript_id\t'):
                                 ID = line.split('|')[-1]
                                 ID = ID.split('_mrna')[0]
-                                if ID not in transcriptsSeen:
+                                if not ID in transcriptsSeen:
                                     transcriptsSeen.append(ID)
                                 transcriptNum = len(transcriptsSeen)
                                 if ID in annotDict:
@@ -2313,7 +2305,7 @@ def findUTRs(cds, mrna, strand):
         inter = InterLap()
         inter.add(cds)
         for i, x in enumerate(mrna):
-            if x not in inter:
+            if not x in inter:
                 loc = (list(inter)[0][0], list(inter)[-1][1])
                 diff = numpy.subtract(x, loc)
                 if diff[0] < 0 and diff[1] < 0:
@@ -2395,7 +2387,6 @@ def dict2nucleotides2(input, prots, trans, cdstrans):
                             protout.write('>{:} {:}\n{:}\n'.format(
                                 x, k, softwrap(Prot)))
 
-
 def simpleFastaStats(fasta):
     from Bio.SeqUtils import GC
     from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -2406,7 +2397,7 @@ def simpleFastaStats(fasta):
     contigs = sorted(contigs, key=lambda x: len(x), reverse=True)
     lengths = [len(x) for x in contigs]
     pctGC = round(GC(''.join(contigs)), 2)
-    # calc N50
+    #N50
     totalLen = sum(lengths)
     n50_len = totalLen*.50
     n90_len = totalLen*.90
@@ -2456,11 +2447,12 @@ def annotation_summary(fasta, output, gff=False, tbl=False, pct=0.90,
         'format': 'annotation',
         'command': command,
         'organism': organism,
-        'software': {
+        'software':{
             'name': 'funannotate',
             'version': get_version(),
             'date': datetime.datetime.today().strftime('%Y-%m-%d'),
-            'resources': databases2json(database)},
+            'resources': databases2json(database)
+        },
         'assembly': {
             'num_contigs': 0,
             'length': 0,
@@ -2780,11 +2772,11 @@ def tbl2dict(input, fasta, Genes):
                         tID = x.strip().split('|')[-1]
                         if '_mrna' in tID:
                             tID = tID.replace('_mrna', '')
-                        if tID not in transcriptID:
+                        if not tID in transcriptID:
                             transcriptID.append(tID)
                     elif x.startswith('\t\t\tprotein_id\t'):
                         pID = x.strip().split('|')[-1]
-                        if pID not in proteinID:
+                        if not pID in proteinID:
                             proteinID.append(pID)
                     elif x.startswith('\t\t\tgene_synonym\t'):
                         synonyms.append(x.strip().split('\t')[-1])
@@ -2821,7 +2813,7 @@ def tbl2dict(input, fasta, Genes):
                             CDS[currentNum].append((cdsF, cdsR))
                         else:
                             CDS[currentNum].append((cdsR, cdsF))
-                if geneID not in Genes:
+                if not geneID in Genes:
                     if type in ['tRNA', 'ncRNA', 'rRNA']:
                         Genes[geneID] = {'name': Name, 'type': type,
                                          'transcript': [],
@@ -2900,10 +2892,10 @@ def tbl2dict(input, fasta, Genes):
                         cdsSeq = cdsSeq[0:endTrunc]
                     else:
                         # could trigger more of a warning/error
-                        print(f"ERROR strand ({v['strand']})) is nonsensical for {k}")
+                        print("ERROR strand (%s) is nonsensical for %s"%(v['strand'],k))
                 Genes[k]['cds_transcript'].append(cdsSeq)
                 Genes[k]['CDS'][i] = sortedCDS
-                protSeq = translate(cdsSeq, v['strand'], 0)
+                protSeq = translate(cdsSeq, v['strand'],0)
                 if protSeq:
                     Genes[k]['protein'].append(protSeq)
                     if protSeq.endswith('*'):
@@ -3317,10 +3309,10 @@ def getGBKLocusTag(input):
             for f in record.features:
                 if f.type == 'gene':
                     ID = f.qualifiers['locus_tag'][0]
-                    if ID not in LocusTags:
+                    if not ID in LocusTags:
                         LocusTags.append(ID)
     lastTag = natsorted(LocusTags)[-1]
-    if '_' not in lastTag:
+    if not '_' in lastTag:
         print('ERROR: underscore "_" not found in locus_tag, exiting.')
         sys.exit(1)
     tag, count = lastTag.rsplit('_', 1)
@@ -3530,12 +3522,12 @@ def gb2parts(input, tbl, gff, prots, trans, dna):
                 dnaout.write(">{:}\n{:}\n".format(
                     record.id, softwrap(str(record.seq))))
                 Contig = record.id
-                if Contig not in scaffLen:
+                if not Contig in scaffLen:
                     scaffLen[Contig] = len(record.seq)
                 for f in record.features:
                     if f.type == 'gene':
                         locusTag, ID, Parent = getID(f, f.type)
-                        if Contig not in scaff2genes:
+                        if not Contig in scaff2genes:
                             scaff2genes[Contig] = [locusTag]
                         else:
                             scaff2genes[Contig].append(locusTag)
@@ -3623,32 +3615,18 @@ def gb_feature_add2dict(f, record, genes):
         if 'gene_synonym' in f.qualifiers:
             for z in f.qualifiers['gene_synonym']:
                 synonyms.append(z)
-        if locusTag not in genes:
-            genes[locusTag] = {'name': name,
-                               'type': None,
-                               'transcript': [],
-                               'cds_transcript': [],
-                               'protein': [],
-                               'source': 'GenBank',
-                               '5UTR': [[]],
-                               '3UTR': [[]],
-                               'codon_start': [],
-                               'ids': [],
-                               'CDS': [],
-                               'mRNA': [],
-                               'strand': strand,
+        if not locusTag in genes:
+            genes[locusTag] = {'name': name, 'type': None, 'transcript': [],
+                               'cds_transcript': [], 'protein': [],
+                               'source': 'GenBank', '5UTR': [[]], '3UTR': [[]],
+                               'codon_start': [], 'ids': [], 'CDS': [],
+                               'mRNA': [], 'strand': strand,
                                'location': (int(start), int(end)),
-                               'contig': chr,
-                               'product': [],
-                               'gene_synonym': synonyms,
-                               'EC_number': [],
-                               'db_xref': [],
-                               'go_terms': [],
-                               'note': [],
-                               'partialStart': [],
-                               'partialStop': [],
-                               'protein_id': [],
-                               'pseudo': pseudo}
+                               'contig': chr, 'product': [],
+                               'gene_synonym': synonyms, 'EC_number': [],
+                               'db_xref': [], 'go_terms': [], 'note': [],
+                               'partialStart': [], 'partialStop': [],
+                               'protein_id': [], 'pseudo': pseudo}
         else:
             genes[locusTag]['location'] = (int(start), int(end))
             genes[locusTag]['strand'] = strand
@@ -3694,7 +3672,7 @@ def gb_feature_add2dict(f, record, genes):
             feature = 'ncRNA'
         else:
             feature = f.type
-        if locusTag not in genes:
+        if not locusTag in genes:
             genes[locusTag] = {'name': name, 'type': feature,
                                'transcript': [feature_seq],
                                'cds_transcript': [], 'protein': [],
@@ -3755,30 +3733,19 @@ def gb_feature_add2dict(f, record, genes):
             if str(f.location.end).startswith('>'):
                 Fivepartial = True
         # update positions
-        if locusTag not in genes:
-            genes[locusTag] = {'name': name,
-                               'type': f.type,
+        if not locusTag in genes:
+            genes[locusTag] = {'name': name, 'type': f.type,
                                'transcript': [feature_seq],
-                               'cds_transcript': [],
-                               'protein': [],
-                               'source': 'GenBank',
-                               '5UTR': [[]],
-                               '3UTR': [[]],
-                               'codon_start': [],
-                               'ids': [], 'CDS': [],
-                               'mRNA': [sortedExons],
-                               'strand': strand,
+                               'cds_transcript': [], 'protein': [],
+                               'source': 'GenBank', '5UTR': [[]], '3UTR': [[]],
+                               'codon_start': [], 'ids': [], 'CDS': [],
+                               'mRNA': [sortedExons], 'strand': strand,
                                'location': (int(start), int(end)),
-                               'contig': chr,
-                               'product': [],
-                               'protein_id': [],
-                               'pseudo': pseudo,
-                               'gene_synonym': synonyms,
+                               'contig': chr, 'product': [], 'protein_id': [],
+                               'pseudo': pseudo, 'gene_synonym': synonyms,
                                'EC_number': [],
-                               'db_xref': [],
-                               'go_terms': [],
-                               'note': [],
-                               'partialStart': [Fivepartial],
+                               'db_xref': [], 'go_terms': [],
+                               'note': [], 'partialStart': [Fivepartial],
                                'partialStop': [Threepartial]}
         else:
             genes[locusTag]['mRNA'].append(sortedExons)
@@ -3820,32 +3787,19 @@ def gb_feature_add2dict(f, record, genes):
                 if str(f.location.end).startswith('>'):
                     Fivepartial = True
             # update positions
-            if locusTag not in genes:
-                genes[locusTag] = {'name': name,
-                                   'type': f.type,
-                                   'transcript': [feature_seq],
-                                   'cds_transcript': [],
-                                   'protein': [],
-                                   'source': 'GenBank',
-                                   '5UTR': [[]],
-                                   '3UTR': [[]],
-                                   'codon_start': [],
-                                   'ids': [],
-                                   'CDS': [],
-                                   'mRNA': [sortedExons],
-                                   'strand': strand,
-                                   'location': (int(start), int(end)),
-                                   'contig': chr,
-                                   'product': [],
-                                   'protein_id': [],
-                                   'db_xref': [],
-                                   'go_terms': [],
-                                   'note': [],
-                                   'gene_synonym': synonyms,
-                                   'EC_number': [],
-                                   'partialStart': [Fivepartial],
-                                   'partialStop': [Threepartial],
-                                   'pseudo': pseudo}
+            if not locusTag in genes:
+                genes[locusTag] = {'name': name, 'type': f.type,
+                                'transcript': [feature_seq],
+                                'cds_transcript': [], 'protein': [],
+                                'source': 'GenBank', '5UTR': [[]], '3UTR': [[]],
+                                'codon_start': [], 'ids': [], 'CDS': [],
+                                'mRNA': [sortedExons], 'strand': strand,
+                                'location': (int(start), int(end)),
+                                'contig': chr, 'product': [], 'protein_id': [],
+                                'db_xref': [], 'go_terms': [], 'note': [],
+                                'gene_synonym': synonyms, 'EC_number': [],
+                                'partialStart': [Fivepartial],
+                                'partialStop': [Threepartial], 'pseudo': pseudo}
             else:
                 genes[locusTag]['mRNA'].append(sortedExons)
                 genes[locusTag]['transcript'].append(feature_seq)
@@ -3907,7 +3861,7 @@ def gb_feature_add2dict(f, record, genes):
                 for x in value:
                     EC.append(x)
         # update dictionary
-        if locusTag not in genes:
+        if not locusTag in genes:
             genes[locusTag] = {'name': name, 'type': 'mRNA',
                                'transcript': [], '5UTR': [[]], '3UTR': [[]],
                                'cds_transcript': [feature_seq],
@@ -4049,7 +4003,7 @@ def exonerate2hints(file, outfile):
                     ID = x.replace('ID=', '')
                 elif x.startswith('Target='):
                     Target = x.replace('Target=', '').split(' ')[0]
-            if ID not in Genes:
+            if not ID in Genes:
                 Genes[ID] = {'id': ID, 'target': Target, 'loc': [
                     (start, end)], 'strand': strand, 'contig': contig}
             else:
@@ -4105,7 +4059,7 @@ def alignments2dict(input, Genes):
                     Target = Target.replace('Target=', '')
             if not ID:
                 continue
-            if ID not in Genes:
+            if not ID in Genes:
                 Genes[ID] = {'mRNA': [(start, end)], 'strand': strand, 'pident': [score],
                              'location': (start, end), 'contig': contig, 'extra': [Extra]}
             else:
@@ -4128,7 +4082,6 @@ def alignments2dict(input, Genes):
                             Genes[ID]['location'][0], end)
     return Genes
 
-
 def introns_from_exons(input):
     introns = []
     if len(input) > 1:
@@ -4138,7 +4091,6 @@ def introns_from_exons(input):
             except IndexError:
                 pass
     return introns
-
 
 def dict2hints(input, hints):
     from collections import OrderedDict
@@ -4206,7 +4158,7 @@ def harmonize_transcripts(genome, alignments, gfffile, hintsfile, evidence=None,
                             id = title.split(' ')[0]
                         else:
                             id = title
-                        if id not in Genes:
+                        if not id in Genes:
                             fasta_outfile.write('>{:}\n{:}\n'.format(title, softwrap(seq)))
                             seqcount += 1
         if seqcount > 0:
@@ -4268,7 +4220,7 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                                'five_prime_utr', 'three_prime_UTR',
                                'three_prime_utr', 'transcript']:
                 continue
-            if contig not in SeqRecords:
+            if not contig in SeqRecords:
                 continue
             start = int(start)
             end = int(end)
@@ -4301,7 +4253,7 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                     else:
                         GO = [GO]
                 elif x.startswith('EC_number='):
-                    ECnum = x.split('=', 1)[-1]
+                    ECnum = x.split('=',1)[-1]
                     if ',' in ECnum:
                         ECnum = ECnum.split(',')
                     else:
@@ -4316,7 +4268,7 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                 elif x.startswith('gbkey='):  # genbank uses
                     gbkey = x.split('=', 1)[-1]
             if feature == 'gene' or feature == 'pseudogene':
-                if ID not in Genes:
+                if not ID in Genes:
                     if feature == 'pseudogene':
                         pseudoFlag = True
                     else:
@@ -4349,32 +4301,19 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                     if not Product:
                         if feature in ['mRNA', 'transcript']:
                             Product = 'hypothetical protein'
-                    if Parent not in Genes:
-                        Genes[Parent] = {'name': Name,
-                                         'type': feature,
-                                         'transcript': [],
-                                         'cds_transcript': [],
-                                         'protein': [],
-                                         '5UTR': [[]],
-                                         '3UTR': [[]],
-                                         'codon_start': [[]],
-                                         'ids': [ID],
-                                         'CDS': [[]],
-                                         'mRNA': [[]],
-                                         'strand': strand,
-                                         'location': (start, end),
-                                         'contig': contig,
-                                         'product': [Product],
-                                         'source': source,
-                                         'phase': [[]],
-                                         'gene_synonym': synonyms,
-                                         'db_xref': [DBxref],
-                                         'go_terms': [GO],
+                    if not Parent in Genes:
+                        Genes[Parent] = {'name': Name, 'type': feature,
+                                         'transcript': [], 'cds_transcript': [],
+                                         'protein': [], '5UTR': [[]], '3UTR': [[]],
+                                         'codon_start': [[]], 'ids': [ID],
+                                         'CDS': [[]], 'mRNA': [[]], 'strand': strand,
+                                         'location': (start, end), 'contig': contig,
+                                         'product': [Product], 'source': source,
+                                         'phase': [[]], 'gene_synonym': synonyms,
+                                         'db_xref': [DBxref], 'go_terms': [GO],
                                          'EC_number': [ECnum],
-                                         'note': [Note],
-                                         'partialStart': [False],
-                                         'partialStop': [False],
-                                         'pseudo': False}
+                                         'note': [Note], 'partialStart': [False],
+                                         'partialStop': [False], 'pseudo': False}
                     else:
                         Genes[Parent]['ids'].append(ID)
                         Genes[Parent]['mRNA'].append([])
@@ -4401,7 +4340,7 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                             # print('{:} update stop: {:} to {:}'.format(Parent, Genes[Parent]['location'][1],end))
                             Genes[Parent]['location'] = (
                                 Genes[Parent]['location'][0], end)
-                    if ID not in idParent:
+                    if not ID in idParent:
                         idParent[ID] = Parent
                 elif feature == 'exon':
                     if ',' in Parent:
@@ -4412,31 +4351,18 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                         if p in idParent:
                             GeneFeature = idParent.get(p)
                         if GeneFeature:
-                            if GeneFeature not in Genes:
-                                Genes[GeneFeature] = {'name': Name,
-                                                      'type': None,
-                                                      'transcript': [],
-                                                      'cds_transcript': [],
-                                                      'protein': [],
-                                                      '5UTR': [[]],
-                                                      '3UTR': [[]],
-                                                      'codon_start': [[]],
-                                                      'ids': [p],
-                                                      'CDS': [],
-                                                      'mRNA': [[(start, end)]],
-                                                      'strand': strand,
-                                                      'location': None,
-                                                      'contig': contig,
-                                                      'product': [],
-                                                      'source': source,
-                                                      'phase': [[]],
-                                                      'db_xref': [],
-                                                      'go_terms': [],
+                            if not GeneFeature in Genes:
+                                Genes[GeneFeature] = {'name': Name, 'type': None,
+                                                      'transcript': [], 'cds_transcript': [],
+                                                      'protein': [], '5UTR': [[]], '3UTR': [[]],
+                                                      'codon_start': [[]], 'ids': [p],
+                                                      'CDS': [], 'mRNA': [[(start, end)]], 'strand': strand,
+                                                      'location': None, 'contig': contig,
+                                                      'product': [], 'source': source, 'phase': [[]],
+                                                      'db_xref': [], 'go_terms': [],
                                                       'EC_number': [],
-                                                      'note': [],
-                                                      'partialStart': [False],
-                                                      'partialStop': [False],
-                                                      'pseudo': False,
+                                                      'note': [], 'partialStart': [False],
+                                                      'partialStop': [False], 'pseudo': False,
                                                       'gene_synonym': synonyms}
                             else:
                                 # determine which transcript this is get index from id
@@ -4452,31 +4378,18 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                         if p in idParent:
                             GeneFeature = idParent.get(p)
                         if GeneFeature:
-                            if GeneFeature not in Genes:
-                                Genes[GeneFeature] = {'name': Name,
-                                                      'type': None,
-                                                      'transcript': [],
-                                                      'cds_transcript': [],
-                                                      'protein': [],
-                                                      '5UTR': [[]],
-                                                      '3UTR': [[]],
-                                                      'codon_start': [[]],
-                                                      'ids': [p],
-                                                      'CDS': [[(start, end)]],
-                                                      'mRNA': [],
-                                                      'strand': strand,
-                                                      'location': None,
-                                                      'contig': contig,
-                                                      'product': [],
-                                                      'source': source,
-                                                      'phase': [[]],
-                                                      'db_xref': [],
-                                                      'go_terms': [],
+                            if not GeneFeature in Genes:
+                                Genes[GeneFeature] = {'name': Name, 'type': None,
+                                                      'transcript': [], 'cds_transcript': [],
+                                                      'protein': [], '5UTR': [[]], '3UTR': [[]],
+                                                      'codon_start': [[]], 'ids': [p],
+                                                      'CDS': [[(start, end)]], 'mRNA': [], 'strand': strand,
+                                                      'location': None, 'contig': contig,
+                                                      'product': [], 'source': source, 'phase': [[]],
+                                                      'db_xref': [], 'go_terms': [],
                                                       'EC_number': [],
-                                                      'note': [],
-                                                      'partialStart': [False],
-                                                      'partialStop': [False],
-                                                      'pseudo': False,
+                                                      'note': [], 'partialStart': [False],
+                                                      'partialStop': [False], 'pseudo': False,
                                                       'gene_synonym': synonyms}
                             else:
                                 # determine which transcript this is get index from id
@@ -4497,32 +4410,19 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                         if p in idParent:
                             GeneFeature = idParent.get(p)
                         if GeneFeature:
-                            if GeneFeature not in Genes:
-                                Genes[GeneFeature] = {'name': Name,
-                                                      'type': None,
-                                                      'transcript': [],
-                                                      'cds_transcript': [],
-                                                      'protein': [],
-                                                      '5UTR': [[(start, end)]],
-                                                      '3UTR': [[]],
-                                                      'codon_start': [[]],
-                                                      'ids': [p],
-                                                      'CDS': [],
-                                                      'mRNA': [[(start, end)]],
-                                                      'strand': strand,
-                                                      'location': None,
-                                                      'contig': contig,
-                                                      'product': [],
-                                                      'source': source,
-                                                      'phase': [[]],
-                                                      'db_xref': [],
-                                                      'go_terms': [],
+                            if not GeneFeature in Genes:
+                                Genes[GeneFeature] = {'name': Name, 'type': None,
+                                                      'transcript': [], 'cds_transcript': [],
+                                                      'protein': [], '5UTR': [[(start, end)]], '3UTR': [[]],
+                                                      'codon_start': [[]], 'ids': [p],
+                                                      'CDS': [], 'mRNA': [[(start, end)]], 'strand': strand,
+                                                      'location': None, 'contig': contig,
+                                                      'product': [], 'source': source, 'phase': [[]],
+                                                      'db_xref': [], 'go_terms': [],
                                                       'EC_number': [],
-                                                      'note': [],
-                                                      'partialStart': [False],
-                                                      'partialStop': [False],
-                                                      'pseudo': False,
-                                                      'gene_synonym': synonyms}
+                                                      'note': [], 'partialStart': [False],
+                                                      'partialStop': [False], 'pseudo': False,
+                                                      'gene_synonym': synonyms,}
                             else:
                                 # determine which transcript this is get index from id
                                 i = Genes[GeneFeature]['ids'].index(p)
@@ -4537,31 +4437,18 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                         if p in idParent:
                             GeneFeature = idParent.get(p)
                         if GeneFeature:
-                            if GeneFeature not in Genes:
-                                Genes[GeneFeature] = {'name': Name,
-                                                      'type': None,
-                                                      'transcript': [],
-                                                      'cds_transcript': [],
-                                                      'protein': [],
-                                                      '5UTR': [[]],
-                                                      '3UTR': [[(start, end)]],
-                                                      'codon_start': [[]],
-                                                      'ids': [p],
-                                                      'CDS': [],
-                                                      'mRNA': [[(start, end)]],
-                                                      'strand': strand,
-                                                      'location': None,
-                                                      'contig': contig,
-                                                      'product': [],
-                                                      'source': source,
-                                                      'phase': [[]],
-                                                      'db_xref': [],
-                                                      'go_terms': [],
+                            if not GeneFeature in Genes:
+                                Genes[GeneFeature] = {'name': Name, 'type': None,
+                                                      'transcript': [], 'cds_transcript': [],
+                                                      'protein': [], '5UTR': [[]], '3UTR': [[(start, end)]],
+                                                      'codon_start': [[]], 'ids': [p],
+                                                      'CDS': [], 'mRNA': [[(start, end)]], 'strand': strand,
+                                                      'location': None, 'contig': contig,
+                                                      'product': [], 'source': source, 'phase': [[]],
+                                                      'db_xref': [], 'go_terms': [],
                                                       'EC_number': [],
-                                                      'note': [],
-                                                      'partialStart': [False],
-                                                      'partialStop': [False],
-                                                      'pseudo': False,
+                                                      'note': [], 'partialStart': [False],
+                                                      'partialStop': [False], 'pseudo': False,
                                                       'gene_synonym': synonyms}
                             else:
                                 # determine which transcript this is get index from id
@@ -4571,7 +4458,7 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
     # loop through and make sure CDS and exons are properly sorted and codon_start is correct, translate to protein space
     for k, v in list(Genes.items()):
         for i in range(0, len(v['ids'])):
-            if k not in Genes:  # capture if gene was removed
+            if not k in Genes:  # capture if gene was removed
                 continue
             if v['type'] in ['mRNA', 'tRNA', 'ncRNA', 'rRNA']:
                 if v['strand'] == '+':
@@ -4593,7 +4480,7 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                     sortedCDS = sorted(v['CDS'][i], key=lambda tup: tup[0])
                 else:
                     sortedCDS = sorted(v['CDS'][i], key=lambda tup: tup[0], reverse=True)
-                # get the codon_start by getting first CDS phase + 1
+                #get the codon_start by getting first CDS phase + 1
                 indexStart = [x for x, y in enumerate(v['CDS'][i]) if y[0] == sortedCDS[0][0]]
                 cdsSeq = getSeqRegions(SeqRecords, v['contig'], sortedCDS)
                 if gap_filter:
@@ -4601,12 +4488,12 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
 
                 protSeq, codon_start = (None,)*2
                 try:
-                    currentphase = v['phase'][i]  # this is never used below?
+                    currentphase = v['phase'][i]
                 except IndexError:
                     pass
-                if '?' in v['phase'][i]:  # dont know the phase -- malformed GFF3, try to find best CDS
+                if '?' in v['phase'][i]: #dont know the phase -- malformed GFF3, try to find best CDS
                     translateResults = []
-                    for y in [1, 2, 3]:
+                    for y in [1,2,3]:
                         protSeq = translate(cdsSeq, v['strand'], y-1)
                         if not protSeq:
                             log.debug('Translation of {:} using {:} phase failed'.format(v['ids'][i], y-1))
@@ -4623,17 +4510,17 @@ def gff2dict(file, fasta, Genes, debug=False, gap_filter=False):
                         codon_start = int(v['phase'][i][indexStart[0]]) + 1
                     except IndexError:
                         pass
-                    # translate and get protein sequence
+                    #translate and get protein sequence
                     protSeq = translate(cdsSeq, v['strand'], codon_start-1)
                 Genes[k]['codon_start'][i] = codon_start
                 if codon_start > 1:
                     if v['strand'] == '+':
                         cdsSeq = cdsSeq[codon_start - 1:]
                     elif v['strand'] == '-':
-                        endTrunc = len(cdsSeq) - codon_start - 1
+                        endTrunc = len(cdsSeq) - codon_start -1
                         cdsSeq = cdsSeq[0:endTrunc]
                     else:
-                        sys.stderr.write(f"ERROR nonsensical strand ({v['strand']}) for gene {k}\n")
+                        sys.stderr.write("ERROR nonsensical strand (%s) for gene %s\n"%([v['strand'],k]))
                 Genes[k]['cds_transcript'].append(cdsSeq)
                 Genes[k]['CDS'][i] = sortedCDS
                 v['protein'].append(protSeq)
@@ -4714,7 +4601,7 @@ def dict2gff3(input, output, debug=False):
                 if 'gene_synonym' in v and len(v['gene_synonym']) > 0:
                     gffout.write(
                         "{:}\t{:}\tgene\t{:}\t{:}\t.\t{:}\t.\tID={:};Name={:};Alias={:};\n".format(
-                            v['contig'], v['source'], v['location'][0],
+                            v['contig'], v['source'],v['location'][0],
                             v['location'][1], v['strand'], k, v['name'],
                             ','.join(v['gene_synonym'])))
                 else:
@@ -4779,7 +4666,7 @@ def dict2gff3(input, output, debug=False):
                             x = x.replace(';', '.')
                         if ':' in x:
                             base, values = x.split(':', 1)
-                            if ',' not in values:
+                            if not ',' in values:
                                 CleanedNote.append(base+':'+values)
                             else:
                                 for y in values.split(','):
@@ -5001,17 +4888,9 @@ def gtf2dict(input):
                     TPM = x.replace('TPM ', '')
 
             if feature == 'transcript':
-                if ID not in Genes:
-                    Genes[ID] = {'type': 'mRNA',
-                                 'codon_start': [1],
-                                 'ids': [transcriptID],
-                                 'CDS': [[]],
-                                 'mRNA': [[]],
-                                 'strand': strand,
-                                 'location': (start, end),
-                                 'contig': contig,
-                                 'source': source,
-                                 'tpm': [TPM]}
+                if not ID in Genes:
+                    Genes[ID] = {'type': 'mRNA', 'codon_start': [1], 'ids': [transcriptID], 'CDS': [[]], 'mRNA': [[]], 'strand': strand,
+                                 'location': (start, end), 'contig': contig, 'source': source, 'tpm': [TPM]}
                 else:
                     if start < Genes[ID]['location'][0]:
                         Genes[ID]['location'] = (
@@ -5030,7 +4909,7 @@ def gtf2dict(input):
                     print(line)
                     sys.exit(1)
                 if feature == 'exon':
-                    if ID not in Genes:
+                    if not ID in Genes:
                         Genes[ID] = {'type': 'mRNA', 'codon_start': [1], 'ids': [transcriptID], 'CDS': [[(start, end)]], 'mRNA': [[(start, end)]], 'strand': strand,
                                      'location': (start, end), 'contig': contig, 'source': source, 'tpm': []}
                     else:
@@ -5142,19 +5021,15 @@ def Quarry2GFF3(input, output):
                         contig, source, 'mRNA', start, end, '.', strand, '.', transID, geneID, ID))
                     GeneCount += 1
                 elif feature == 'CDS':
-                    if transID not in exonCounts:
+                    if not transID in exonCounts:
                         exonCounts[transID] = 1
                     else:
                         exonCounts[transID] += 1
                     num = exonCounts.get(transID)
-                    # should we use f-strings here instead for easier to follow, or a join on tab?
-                    outfile.write('{:},\tID={:}.exon{:};Parent={:};\n'.format(
-                                  "\t".join([contig, source, 'exon',
-                                            start, end, '.', strand, '.']),
-                                  transID, num, transID))
-                    outfile.write('{:}\tID={:}.cds;Parent={:};\n'.format(
-                                  "\t".join([contig, source, feature, start, end, score, strand, phase]),
-                                  transID, transID))
+                    outfile.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\tID={:}.exon{:};Parent={:};\n'.format(
+                        contig, source, 'exon', start, end, '.', strand, '.', transID, num, transID))
+                    outfile.write('{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\t{:}\tID={:}.cds;Parent={:};\n'.format(
+                        contig, source, feature, start, end, score, strand, phase, transID, transID))
 
 
 def runStringtie(bamfile, cpus, output):
@@ -5421,15 +5296,14 @@ def runBUSCOv5(input, lineage, cpus, tmpdir, output, database='.',
                species='aspergillus_nidulans', method='proteins'):
     runDir = 'busco_{}'.format(str(uuid.uuid4())[:-8])
     if method == 'proteins':
-        cmd = ['busco', '-i', input, '-m', 'proteins',
-               '-l', lineage, '-o', runDir, '-c', str(cpus),
-               '--force', '--offline',
-               '--download_path', database]
+        cmd = ['busco', '-i', input, '-m', 'proteins', '-l',
+            lineage, '-o', runDir, '-c', str(cpus), '--force', '--offline',
+            '--download_path', database]
     elif method == 'genome':
-        cmd = ['busco', '-i', input, '-m', 'proteins',
-               '-l', lineage, '-o', runDir, '-c', str(cpus),
-               '--force', '--offline', '--download_path', database,
-               '--augustus', '--augustus_species', species]
+        cmd = ['busco', '-i', input, '-m', 'proteins', '-l',
+            lineage, '-o', runDir, '-c', str(cpus), '--force', '--offline',
+            '--download_path', database, '--augustus',
+            '--augustus_species', species]
     busco_data = os.path.join(tmpdir, runDir, 'run_{}_odb10'.format(lineage), 'full_table.tsv')
     runSubprocess(cmd, tmpdir, log)
     # now parse output and write to annotation file
@@ -5521,11 +5395,11 @@ def getCompleteBuscos(input, ploidy=1):
 
 
 def filterGFF3(keepDict, genome, gff3, output):
-    # load into Dictionary
+    #load into Dictionary
     Genes = {}
     Genes = gff2dict(gff3, genome, Genes)
     filtered = {}
-    for k, v in Genes.items():
+    for k,v in Genes.items():
         if v['ids'][0] in keepDict:
             filtered[k] = v
     dict2gff3(filtered, output)
@@ -5674,12 +5548,12 @@ def parseEggNoggMapper(input, output):
                         NOG = 'ENOG41' + x.split('@')[0]
                 Gene = ''
                 if cols[Genei] != '':
-                    if '_' not in cols[Genei] and '.' not in cols[Genei] and number_present(cols[Genei]):
+                    if not '_' in cols[Genei] and not '.' in cols[Genei] and number_present(cols[Genei]):
                         Gene = cols[Genei]
                 Description = cols[Desci]
                 if NOG == '':
                     continue
-                if NOG not in Definitions:
+                if not NOG in Definitions:
                     Definitions[NOG] = Description
                 out.write("%s\tnote\tEggNog:%s\n" % (ID, NOG))
                 if cols[COGi] != '':
@@ -5739,7 +5613,7 @@ def signalP(input, tmpdir, output):
     version = check_version7('signalp')
     if '.' in version:
         version = int(version.split('.')[0])
-    if version == 5:
+    if version > 4:
         cmd = ['signalp', '-stdout', '-org', 'euk', '-format', 'short', '-fasta']
     else:
         cmd = ['signalp', '-t', 'euk', '-f', 'short']
@@ -5747,7 +5621,7 @@ def signalP(input, tmpdir, output):
     for file in os.listdir(os.path.join(tmpdir, 'signalp_tmp')):
         if file.startswith('chunk'):
             file = os.path.join(tmpdir, 'signalp_tmp', file)
-            tmp_out = re.sub(r'\.fa$', '.signalp.out', file)
+            tmp_out = re.sub(r'\.fa$','.signalp.out',file)
             cmd1 = cmd + [file]
             runSubprocess(cmd1, '.', log, capture_output=tmp_out)
     # now concatenate all outputs
@@ -5761,20 +5635,6 @@ def signalP(input, tmpdir, output):
                     finalout.write(infile.read())
     # cleanup tmp directory
     shutil.rmtree(os.path.join(tmpdir, 'signalp_tmp'))
-
-
-def signalP6(input, tmpdir, output, cpus):
-    sp_raw = os.path.join(tmpdir, 'signalp')
-    if cpus > 2:
-        processes = str(cpus - 1)
-    else:
-        processes = str(1)
-    cmd = ['signalp6', '--output_dir', sp_raw, '-org', 'euk', '--mode', 'fast', '-format', 'txt', '-fasta', input, '--write_procs', processes]
-    runSubprocess(cmd, '.', log)
-    if os.path.isfile(output):
-        os.remove(output)
-    sp_final = os.path.join(sp_raw, 'prediction_results.txt')
-    shutil.copyfile(sp_final, output)
 
 
 def parseSignalP(sigP, secretome_annot):
@@ -5855,12 +5715,12 @@ def parsePhobiusSignalP(phobius, sigP, membrane_annot, secretome_annot):
             geneID = cols[0]
             if int(cols[1]) > 0:  # then found TM domain
                 annot = cols[3]
-                if geneID not in pTMDict:
+                if not geneID in pTMDict:
                     pTMDict[geneID] = 'TransMembrane:'+cols[1]+' ('+annot+')'
             if cols[2] == 'Y':  # then sig pep discovered
                 location = cols[3].split('/')[0]
                 clevage = location.split('c')[-1]
-                if geneID not in pSecDict:
+                if not geneID in pSecDict:
                     pSecDict[geneID] = [clevage, '', '']
     if sigP:  # will be passed FALSE if signalP data missing
         # parse signalp output and turn into annotation file
@@ -5881,7 +5741,7 @@ def parsePhobiusSignalP(phobius, sigP, membrane_annot, secretome_annot):
                         ID = col[0]
                         end = int(col[2]) - 1
                         sigpDict[ID] = [end, '', '']
-                elif version == 5:  # version 5 has different format and tab delimited hooray!
+                else:  # version 5 has different format and tab delimited hooray!
                     if '\t' in line:
                         cols = line.split('\t')
                         if cols[1] != 'OTHER':  # then signal peptide
@@ -5891,16 +5751,6 @@ def parsePhobiusSignalP(phobius, sigP, membrane_annot, secretome_annot):
                             prob = components[-1]
                             aa = components[3].replace('.', '')
                             sigpDict[ID] = [pos, aa, prob]
-                else:  # version 6 changes the format of the output table again
-                    if '\t' in line:
-                        cols = line.split('\t')
-                        if cols[1] != 'OTHER':  # then signal peptide
-                            ID, prediction, score1, score2, position = cols[:5]
-                            ID = ID.split(' ')[0]
-                            components = position.split()
-                            pos = components[2].split('-')[0]
-                            prob = components[-1]
-                            sigpDict[ID] = [pos, '', prob]
     else:
         sigpDict = pSecDict
     # write annotation files
@@ -5963,23 +5813,22 @@ def SortRenameHeaders(input, output):
 def validate_tRNA(input, genes, gaps, output):
     # run bedtools intersect to keep only input that dont intersect with either genes or gaps
     sortedInput = os.path.abspath(input)+'.sorted.gff3'
-    # sortGFFproper(input, sortedInput)
+    #sortGFFproper(input, sortedInput)
     cmd1 = ['bedtools', 'sort', '-i', input]
     with open(sortedInput, 'w') as outfile:
         subprocess.call(cmd1, stdout=outfile)
     sortedGenes = os.path.abspath(genes)+'.sorted.gff3'
-    # sortGFFproper(genes, sortedGenes)
+    #sortGFFproper(genes, sortedGenes)
     cmd2 = ['bedtools', 'sort', '-i', genes]
     with open(sortedGenes, 'w') as outfile:
         subprocess.call(cmd2, stdout=outfile)
     if gaps:
         sortedGaps = os.path.abspath(gaps)+'.sorted.gff3'
-        # sortGFFproper(gaps, sortedGaps)
+        #sortGFFproper(gaps, sortedGaps)
         cmd3 = ['bedtools', 'sort', '-i', gaps]
         with open(sortedGaps, 'w') as outfile:
             subprocess.call(cmd3, stdout=outfile)
-    cmd = ['bedtools', 'intersect', '-sorted', '-v', '-a',
-           sortedInput, '-b', sortedGenes]
+    cmd = ['bedtools', 'intersect', '-sorted', '-v', '-a', sortedInput, '-b', sortedGenes]
     if gaps:
         cmd.append(sortedGaps)
     tmpOut = os.path.abspath(output)+'.tmp'
@@ -6016,9 +5865,9 @@ def checkMask(genome, bedfile):
                 ID = header.split(' ')[0]
             else:
                 ID = header
-            if ID not in masked:
+            if not ID in masked:
                 masked[ID] = []
-            if ID not in ContigSizes:
+            if not ID in ContigSizes:
                 ContigSizes[ID] = len(Seq)
             GenomeLength += len(Seq)
             maskedSize += n_lower_chars(Seq)
@@ -6106,7 +5955,7 @@ def checkMasklowMem(genome, bedfile, gapsfile, cpus, tmpdir=False):
                 ID = header.split(' ')[0]
             else:
                 ID = header
-            if ID not in ContigSizes:
+            if not ID in ContigSizes:
                 ContigSizes[ID] = len(Seq)
             with open(os.path.join(tmpdir, ID+'.fasta'), 'w') as fastaout:
                 fastaout.write('>{:}\n{:}\n'.format(ID, Seq))
@@ -6272,7 +6121,7 @@ def glimmer2gff3(input, output):
                 if feature == 'mRNA':
                     genelen = int(end) - int(start)
                     if genelen < 150:
-                        if ID not in skipList:
+                        if not ID in skipList:
                             skipList.append(ID)
                         continue
                     geneID = 'glimmerG_'+str(GeneCount)
@@ -6286,7 +6135,7 @@ def glimmer2gff3(input, output):
                 elif feature == 'CDS':
                     if Parent in idsSeen:
                         geneID, transID = idsSeen.get(Parent)
-                        if transID not in exonCounts:
+                        if not transID in exonCounts:
                             exonCounts[transID] = 1
                         else:
                             exonCounts[transID] += 1
@@ -6428,32 +6277,11 @@ def zff2gff3(input, fasta, output):
                 end = int(end)
                 # phase = int(phase)
                 phase = '?'  # phase in GFF3 doesn't seem to be accurate, so guess it by translation of all 3 frames
-                if ID not in Genes:
-                    Genes[ID] = {'name': None,
-                                 'type': 'mRNA',
-                                 'transcript': [],
-                                 'cds_transcript': [],
-                                 'protein': [],
-                                 '5UTR': [[]],
-                                 '3UTR': [[]],
-                                 'codon_start': [[]],
-                                 'ids': [ID+'-T1'],
-                                 'CDS': [[(start, end)]],
-                                 'mRNA': [[(start, end)]],
-                                 'strand': strand,
-                                 'location': (start, end),
-                                 'contig': contig,
-                                 'product': [[]],
-                                 'source': 'snap',
-                                 'phase': [[phase]],
-                                 'db_xref': [[]],
-                                 'EC_number': [[]],
-                                 'gene_synonym': [],
-                                 'go_terms': [[]],
-                                 'note': [[]],
-                                 'partialStart': [[]],
-                                 'partialStop': [[]],
-                                 'pseudo': False}
+                if not ID in Genes:
+                    Genes[ID] = {'name': None, 'type': 'mRNA', 'transcript': [], 'cds_transcript': [], 'protein': [], '5UTR': [[]], '3UTR': [[]],
+                                 'codon_start': [[]], 'ids': [ID+'-T1'], 'CDS': [[(start, end)]], 'mRNA': [[(start, end)]], 'strand': strand,
+                                 'location': (start, end), 'contig': contig, 'product': [[]], 'source': 'snap', 'phase': [[phase]],
+                                 'db_xref': [[]], 'EC_number': [[]], 'gene_synonym': [], 'go_terms': [[]], 'note': [[]], 'partialStart': [[]], 'partialStop': [[]], 'pseudo': False}
                 else:
                     Genes[ID]['CDS'][0].append((start, end))
                     Genes[ID]['mRNA'][0].append((start, end))
@@ -6487,7 +6315,7 @@ def zff2gff3(input, fasta, output):
 
         Genes[k]['CDS'][i] = sortedCDS
 
-        protSeq, codon_start = (None,)*2
+        protSeq,codon_start = (None,)*2
 
         if '?' in v['phase'][i]:  # dont know the phase -- malformed GFF3, try to find best CDS
             translateResults = []
@@ -6503,17 +6331,17 @@ def zff2gff3(input, fasta, output):
         else:
             codon_start = int(v['phase'][i][indexStart[0]]) + 1
             # translate and get protein sequence
-            cdsSeq = cdsSeq[codon_start-1:]
+            cdsSeq  = cdsSeq[codon_start-1:]
             protSeq = translate(cdsSeq, v['strand'], codon_start-1)
         Genes[k]['codon_start'][i] = codon_start
         if codon_start > 1:
             if v['strand'] == '+':
                 cdsSeq = cdsSeq[codon_start - 1:]
             elif v['strand'] == '-':
-                endTrunc = len(cdsSeq) - codon_start - 1
+                endTrunc = len(cdsSeq) - codon_start -1
                 cdsSeq = cdsSeq[0:endTrunc]
             else:
-                print(f"ERROR nonsensical strand ({v['strand']}) for gene {k}")
+                print("ERROR nonsensical strand (%s) for gene %s"%([v['strand'],k]))
         Genes[k]['cds_transcript'].append(cdsSeq)
         if protSeq:
             Genes[k]['protein'].append(protSeq)
@@ -6824,14 +6652,14 @@ def OldRemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, out
                 ninth = line.split('ID=')[-1]
                 ID = ninth.split(";")[0]
                 remove.append(ID)
-                if ID not in reason:
+                if not ID in reason:
                     reason[ID] = 'remove_reason=repeat_overlap;'
     # parse the results from BlastP search of transposons
     with open(BlastResults, 'r') as input:
         for line in input:
             col = line.split('\t')
             remove.append(col[0])
-            if col[0] not in reason:
+            if not col[0] in reason:
                 ID = col[0].replace('evm.model.', 'evm.TU.')
                 reason[ID] = 'remove_reason=repeat_match;'
             else:
@@ -6846,11 +6674,11 @@ def OldRemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, out
             ID = rec.id.replace('evm.model.', 'evm.TU.')
             if len(Seq) < int(length):
                 remove.append(ID)
-                if ID not in reason:
+                if not ID in reason:
                     reason[ID] = 'remove_reason=seq_too_short;'
             if 'XX' in Seq:
                 remove.append(ID)
-                if rec.id not in reason:
+                if not rec.id in reason:
                     reason[ID] = 'remove_reason=model_span_gap;'
     remove = [w.replace('evm.TU.', '') for w in remove]
     remove = [w.replace('evm.model.', '') for w in remove]
@@ -6901,7 +6729,7 @@ def OldRemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, out
                     out.write(line)
 
 
-def RemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, methods, output):
+def RemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, methods, output, pident=0.5):
     reason = {}
     tooShort = 0
     repeat = 0
@@ -6911,15 +6739,15 @@ def RemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, method
         repeat_temp = os.path.join(tmpdir, 'genome.repeats.to.remove.gff')
         gffSorted = os.path.abspath(gff)+'.sorted.gff'
         bedSorted = os.path.abspath(repeats)+'.sorted.bed'
-        # sortBedproper(repeats, bedSorted)
+        #sortBedproper(repeats, bedSorted)
         cmd1 = ['bedtools', 'sort', '-i', repeats]
         with open(bedSorted, 'w') as bedout:
             subprocess.call(cmd1, stdout=bedout)
-        # sortGFFproper(gff, gffSorted)
+        #sortGFFproper(gff, gffSorted)
         cmd2 = ['bedtools', 'sort', '-i', gff]
         with open(gffSorted, 'w') as gffout:
             subprocess.call(cmd2, stdout=gffout)
-        cmd = ['bedtools', 'intersect', '-sorted', '-f', '0.9', '-a', gffSorted, '-b', bedSorted]
+        cmd = ['bedtools', 'intersect', '-sorted', '-f', '0.8', '-a', gffSorted, '-b', bedSorted]
         runSubprocess(cmd, '.', log, capture_output=repeat_temp)
         # parse the results from bedtools and add to remove list
         with open(repeat_temp, 'r') as input:
@@ -6927,14 +6755,16 @@ def RemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, method
                 if "\tgene\t" in line:
                     ninth = line.split('ID=')[-1]
                     ID = ninth.split(";")[0]
-                    if ID not in reason:
+                    if not ID in reason:
                         reason[ID] = 'remove_reason=repeat_overlap;'
     if 'blast' in methods:
         # parse the results from BlastP search of transposons
         with open(BlastResults, 'r') as input:
             for line in input:
                 col = line.split('\t')
-                if col[0] not in reason:
+                if float(col[2]) < pident: continue	# HK: consider match identity/length
+
+                if not col[0] in reason:
                     ID = col[0].replace('evm.model.', 'evm.TU.')
                     reason[ID] = 'remove_reason=repeat_match;'
                 else:
@@ -6948,10 +6778,10 @@ def RemoveBadModels(proteins, gff, length, repeats, BlastResults, tmpdir, method
             Seq = str(rec.seq)[:-1]
             ID = rec.id.replace('evm.model.', 'evm.TU.')
             if len(Seq) < int(length):
-                if ID not in reason:
+                if not ID in reason:
                     reason[ID] = 'remove_reason=seq_too_short;'
             if 'XX' in Seq:
-                if rec.id not in reason:
+                if not rec.id in reason:
                     reason[ID] = 'remove_reason=model_span_gap;'
     # now read the EVM gene models in Blocks so you can parse gene ID
     numTotal = len(reason)
@@ -7192,7 +7022,7 @@ def ParseAntiSmash(input, tmpdir, output, annotations):
     with open(output, 'w') as antibed:
         with open(input, 'r') as input:
             SeqRecords = SeqIO.parse(input, 'genbank')
-            for rec_num, record in enumerate(SeqRecords):
+            for rec_num,record in enumerate(SeqRecords):
                 for f in record.features:
                     locusTag, ID, Parent = (None,)*3
                     if smash_version < 6:
@@ -7345,7 +7175,7 @@ def ParseAntiSmash(input, tmpdir, output, annotations):
         # add annots from smProducts
         for k, v in list(smProducts.items()):
             ID = k
-            if v != 'none' and 'BLAST' not in v:
+            if v != 'none' and not 'BLAST' in v:
                 sys.stdout.write("%s\tproduct\t%s\n" % (ID, v))
         # add smCOGs into note section
         for k, v in list(SMCOGs.items()):
@@ -7371,7 +7201,7 @@ def GetClusterGenes(input, GFF, genome, annotations):
             if v['location'] in interClust[v['contig']]:
                 best_hit = list(interClust[v['contig']].find(v['location']))[0]
                 clusterName = best_hit[2]
-                if clusterName not in dictClusters:
+                if not clusterName in dictClusters:
                     dictClusters[clusterName] = v['ids']
                 else:
                     dictClusters[clusterName] += v['ids']
@@ -7487,7 +7317,7 @@ def getEggNogfromNote(input):
                             for i in notes:
                                 if i.startswith('EggNog:'):
                                     hit = i.replace('EggNog:', '')
-                                    if ID not in dict:
+                                    if not ID in dict:
                                         dict[ID] = hit
     return dict
 
@@ -7513,7 +7343,7 @@ def getStatsfromNote(input, word, Database):
                                     hit = i.replace(word+':', '')
                                     if hit.startswith('MER'):  # change to family name
                                         hit = meropsDict.get(hit)
-                                    if hit not in dict:
+                                    if not hit in dict:
                                         dict[hit] = [ID]
                                     else:
                                         dict[hit].append(ID)
@@ -7580,7 +7410,7 @@ def getStatsfromDbxref(input, word):
                             for i in v:
                                 if i.startswith(word+':'):
                                     hit = i.replace(word+':', '')
-                                    if hit not in dict:
+                                    if not hit in dict:
                                         dict[hit] = [ID]
                                     else:
                                         dict[hit].append(ID)
@@ -7625,13 +7455,13 @@ def getGBKannotation(input, Database):
                             for i in v:
                                 if i.startswith('PFAM:'):
                                     hit = i.replace('PFAM:', '')
-                                    if hit not in pfams:
+                                    if not hit in pfams:
                                         pfams[hit] = [ID]
                                     else:
                                         pfams[hit].append(ID)
                                 elif i.startswith('InterPro:'):
                                     hit = i.replace('InterPro:', '')
-                                    if hit not in iprs:
+                                    if not hit in iprs:
                                         iprs[hit] = [ID]
                                     else:
                                         iprs[hit].append(ID)
@@ -7640,24 +7470,24 @@ def getGBKannotation(input, Database):
                             for i in notes:
                                 if i.startswith('EggNog:'):
                                     hit = i.replace('EggNog:', '')
-                                    if ID not in nogs:
+                                    if not ID in nogs:
                                         nogs[ID] = hit
                                 elif i.startswith('BUSCO:'):
                                     hit = i.replace('BUSCO:', '')
-                                    if hit not in buscos:
+                                    if not hit in buscos:
                                         buscos[hit] = [ID]
                                     else:
                                         buscos[hit].append(ID)
                                 elif i.startswith('MEROPS:'):  # change to family name
                                     hit = i.replace('MEROPS:', '')
                                     hit = meropsDict.get(hit)
-                                    if hit not in merops:
+                                    if not hit in merops:
                                         merops[hit] = [ID]
                                     else:
                                         merops[hit].append(ID)
                                 elif i.startswith('CAZy:'):
                                     hit = i.replace('CAZy:', '')
-                                    if hit not in cazys:
+                                    if not hit in cazys:
                                         cazys[hit] = [ID]
                                     else:
                                         cazys[hit].append(ID)
@@ -7665,25 +7495,25 @@ def getGBKannotation(input, Database):
                                     hit = i.replace('COG:', '')
                                     hits = hit.split(',')
                                     for x in hits:
-                                        if x not in cogs:
+                                        if not x in cogs:
                                             cogs[x] = [ID]
                                         else:
                                             cogs[x].append(ID)
                                 elif i.startswith('SECRETED:'):
                                     hit = i.replace('SECRETED:', '')
-                                    if hit not in secreted:
+                                    if not hit in secreted:
                                         secreted[hit] = [ID]
                                     else:
                                         secreted[hit].append(ID)
                                 elif i.startswith('TransMembrane:'):
                                     hit = i.replace('TransMembrane:', '')
-                                    if hit not in membrane:
+                                    if not hit in membrane:
                                         membrane[hit] = [ID]
                                     else:
                                         membrane[hit].append(ID)
                                 elif i.startswith('antiSMASH:'):
                                     hit = i.replace('antiSMASH:', '')
-                                    if hit not in secmet:
+                                    if not hit in secmet:
                                         secmet[hit] = [ID]
                                     else:
                                         secmet[hit].append(ID)
@@ -7704,7 +7534,7 @@ def annotationtable(input, Database, HeaderNames, InterProDict, output):
     # get note new/unique note names
     uniqueNotes = OrderedDict()
     for x in HeaderNames:
-        if x not in ['BUSCO', 'CAZy', 'COG', 'EggNog', 'SECRETED', 'GO', 'MEROPS', 'TransMembrane']:
+        if not x in ['BUSCO', 'CAZy', 'COG', 'EggNog', 'SECRETED', 'GO', 'MEROPS', 'TransMembrane']:
             uniqueNotes[x] = []
     # load genbank into funannotate dictionary (required as we need transcript/cds/etc)
     Genes = {}
@@ -7718,14 +7548,14 @@ def annotationtable(input, Database, HeaderNames, InterProDict, output):
     # input should be fully annotation GBK file from funannotate
     with open(output, 'w') as outfile:
         header = ['GeneID', 'TranscriptID', 'Feature', 'Contig', 'Start',
-                  'Stop', 'Strand', 'Name', 'Product', 'Alias/Synonyms', 'EC_number',
-                  'BUSCO', 'PFAM', 'InterPro', 'EggNog', 'COG', 'GO Terms',
-                  'Secreted', 'Membrane', 'Protease', 'CAZyme']
+            'Stop', 'Strand', 'Name', 'Product', 'Alias/Synonyms', 'EC_number',
+            'BUSCO', 'PFAM', 'InterPro', 'EggNog', 'COG', 'GO Terms',
+            'Secreted', 'Membrane', 'Protease', 'CAZyme']
         header += uniqueNotes.keys()
         header += ['Notes', 'gDNA', 'mRNA', 'CDS-transcript', 'Translation']
         outfile.write('%s\n' % '\t'.join(header))
-        for k, v in sortedGenes.items():
-            for i in range(0, len(v['ids'])):
+        for k,v in sortedGenes.items():
+            for i in range(0,len(v['ids'])):
                 # for each new feature, start with empty lists
                 pfams = []
                 iprs = []
@@ -7740,7 +7570,7 @@ def annotationtable(input, Database, HeaderNames, InterProDict, output):
                 buscos = []
                 ecnum = []
                 alias = []
-                for key, value in uniqueNotes.items():
+                for key,value in uniqueNotes.items():
                     uniqueNotes[key] = []
                 # now grab the data
                 for y in v['db_xref'][i]:
@@ -7777,7 +7607,7 @@ def annotationtable(input, Database, HeaderNames, InterProDict, output):
                         hit = y.replace('COG:', '')
                         hits = hit.split(',')
                         for x in hits:
-                            desc = x + ':' + resources.COGS.get(x)
+                            desc = x + ':'+ resources.COGS.get(x)
                             cogs.append(desc)
                     elif y.startswith('SECRETED:'):
                         hit = y.replace('SECRETED:', '')
@@ -7801,17 +7631,17 @@ def annotationtable(input, Database, HeaderNames, InterProDict, output):
                 result = [k, v['ids'][i], v['type'], v['contig'],
                           str(v['location'][0]), str(v['location'][1]),
                           v['strand'], v['name'],
-                          v['product'][i], ';'.join(alias),
-                          ';'.join(ecnum), ';'.join(buscos),
-                          ';'.join(pfams), ';'.join(iprs),
-                          ';'.join(nogs), ';'.join(cogs),
+                          v['product'][i],';'.join(alias),
+                          ';'.join(ecnum),';'.join(buscos),
+                          ';'.join(pfams),';'.join(iprs),
+                          ';'.join(nogs),';'.join(cogs),
                           ';'.join(GOS),
                           ';'.join(secreted),
                           ';'.join(membrane),
                           ';'.join(merops),
                           ';'.join(cazys)
                           ]
-                for key, value in uniqueNotes.items():
+                for key,value in uniqueNotes.items():
                     result.append(';'.join(value))
                 gDNA = getSeqRegions(SeqRecords, v['contig'], [v['location']])
                 try:
@@ -7986,7 +7816,7 @@ def ncbiCheckErrors(error, validation, genename, fixOut):
                         ID = ID.split('-')[0]
                     reason = line.split(' FEATURE:')[0]
                     reason = reason.split('] ')[-1]
-                    if ID not in needFixing:
+                    if not ID in needFixing:
                         needFixing[ID] = reason
         if actual_error > 0:
             log.info("There are %i gene models that need to be fixed." %
@@ -8051,7 +7881,7 @@ def drawStackedBar(panda, type, labels, ymax, output, colors=False):
     # stackedbargraph from summary data
     SBG = StackedBarGrapher()
     # labels
-    # d_labels = panda.index.values   # this isn't used below
+    d_labels = panda.index.values
     # y-ticks
     ticks = np.linspace(0, ymax, 6)
     ticks = list(ticks)
@@ -8106,7 +7936,7 @@ def drawHeatmap(df, color, output, labelsize, annotate):
     width = len(df.columns) / 2
     height = len(df.index) / 4
     fig, ax = plt.subplots(figsize=(width, height))
-    # cbar_ax = fig.add_axes(shrink=0.4)
+    #cbar_ax = fig.add_axes(shrink=0.4)
     if annotate:
         sns.heatmap(df, linewidths=0.5, cmap=color, ax=ax,
                     fmt="d", annot_kws={"size": 4}, annot=True)
@@ -8130,7 +7960,7 @@ def donutplot(df, LongName, output, colors=False):
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
-        import seaborn as sns  # this is reportedly not used
+        import seaborn as sns
     # create data
     longnames = []
     for x in df.columns.tolist():
@@ -8142,7 +7972,7 @@ def donutplot(df, LongName, output, colors=False):
     data = df.values.tolist()
     species = df.index.values
     # get size of table
-    categories = len(df.columns)  # this is reportedly not used
+    categories = len(df.columns)
     total = len(df.index)
     Rows = total // 2
     Rows += total % 2
@@ -8158,7 +7988,7 @@ def donutplot(df, LongName, output, colors=False):
     else:
         fig = plt.figure(1, figsize=(8, 8))
     for k in range(total):
-        ax = fig.add_subplot(Rows, 2, Position[k]) 
+        ax = fig.add_subplot(Rows, 2, Position[k])
         # Create a circle for the center of the plot
         my_circle = plt.Circle((0, 0), 0.7, color='white')
         plt.pie(data[0], labels=names, colors=color_palette)
@@ -8324,7 +8154,7 @@ def iprTSV2dict(file, terms):
                 continue
             line = line.rstrip()
             entry, type, name = line.split('\t')
-            if entry not in iprDict:
+            if not entry in iprDict:
                 iprDict[entry] = name
     return iprDict
 
@@ -8366,7 +8196,7 @@ def flipKeyValues(input):
     flipped = {}
     for k, v in list(input.items()):
         for y in v:
-            if y not in flipped:
+            if not y in flipped:
                 flipped[y] = k
     return flipped
 
@@ -8583,7 +8413,7 @@ def count_multi_CDS_genes(input, filterlist):
     return len(input), counter, len(filterlist), counter_inList
 
 
-def selectTrainingModels(input, fasta, genemark_gtf, output, tmpdir):
+def selectTrainingModels(input, fasta, genemark_gtf, output):
     from collections import OrderedDict
     '''
     function to take a GFF3 file and filter the gene models so they are non-overalpping
@@ -8596,9 +8426,7 @@ def selectTrainingModels(input, fasta, genemark_gtf, output, tmpdir):
     Genes = {}
     Genes = gff2dict(input, fasta, Genes)
     # add to InterLap output proteins
-    proteins = os.path.join(tmpdir, 'augustus.training.proteins.fa')
-    augdmnddb = os.path.join(tmpdir, 'aug_training.dmnd')
-    augblastout = os.path.join(tmpdir, 'aug.blast.txt')
+    proteins = 'augustus.training.proteins.fa'
     ignoreList = []
     keeperList = getGenesGTF(genemark_gtf)
     # check number of multi-cds genes
@@ -8619,7 +8447,7 @@ def selectTrainingModels(input, fasta, genemark_gtf, output, tmpdir):
         keeperCheck, multiCDScheck))
     with open(proteins, 'w') as protout:
         for k, v in natsorted(list(Genes.items())):
-            if keeperCheck and k not in keeperList:
+            if keeperCheck and not k in keeperList:
                 ignoreList.append(k)
                 continue
             if multiCDScheck and len(v['CDS'][0]) < 2:
@@ -8632,18 +8460,14 @@ def selectTrainingModels(input, fasta, genemark_gtf, output, tmpdir):
                           (k, len(v['CDS'][0]), v['protein'][0]))
 
     # make sure gene models are unique, so do pairwise diamond search @ 80% identity
-    cmd = ['diamond', 'makedb', '--in', proteins, '--db', augdmnddb]
+    cmd = ['diamond', 'makedb', '--in',
+           'augustus.training.proteins.fa', '--db', 'aug_training.dmnd']
     runSubprocess(cmd, '.', log, only_failed=True)
-    cmd = ['diamond', 'blastp', '--query', proteins,
-           '--db', augdmnddb, '--more-sensitive',
-           '-o', augblastout,
-           '-f', '6', 'qseqid', 'sseqid', 'pident',
-           '--query-cover', '80',
-           '--subject-cover', '80', '--id', '80',
-           '--no-self-hits']
+    cmd = ['diamond', 'blastp', '--query', 'augustus.training.proteins.fa', '--db', 'aug_training.dmnd', '--more-sensitive', '-o',
+           'aug.blast.txt', '-f', '6', 'qseqid', 'sseqid', 'pident', '--query-cover', '80', '--subject-cover', '80', '--id', '80', '--no-self-hits']
     runSubprocess(cmd, '.', log, only_failed=True)
     blast_results = []
-    with open(augblastout, 'r') as blast:
+    with open('aug.blast.txt', 'r') as blast:
         for line in blast:
             line = line.rstrip()
             line = line.replace('___', '\t')
@@ -8662,22 +8486,22 @@ def selectTrainingModels(input, fasta, genemark_gtf, output, tmpdir):
                 blastignore.append(hit[0])
     log.debug('{:,} models fail blast identity threshold'.format(
         len(blastignore)))
-    SafeRemove(proteins)
-    SafeRemove(augdmnddb)
-    SafeRemove(augblastout)
+    SafeRemove('augustus.training.proteins.fa')
+    SafeRemove('aug_training.dmnd')
+    SafeRemove('aug.blast.txt')
     # now return cleaned genemark GTF file
     finalIgnoreList = []
     for x in ignoreList:
-        if x not in finalIgnoreList:
+        if not x in finalIgnoreList:
             finalIgnoreList.append(x)
     for y in blastignore:
-        if y not in finalIgnoreList:
+        if not y in finalIgnoreList:
             finalIgnoreList.append(y)
     log.debug('{:,} models will be ignored for training Augustus'.format(
         len(finalIgnoreList)))
     GenesPass = {}
     for k, v in natsorted(list(Genes.items())):
-        if k not in finalIgnoreList and k not in GenesPass:
+        if not k in finalIgnoreList and not k in GenesPass:
             loc = sorted([v['location'][0], v['location'][1]])
             if loc in gene_inter[v['contig']]:
                 hits = list(gene_inter[v['contig']].find(loc))
@@ -8721,7 +8545,7 @@ def getGenesGTF(input):
                         tmp = x.replace('gene_id ', '')
                         ID = tmp.replace('"', '')
                 if ID:
-                    if ID not in genes:
+                    if not ID in genes:
                         genes.append(ID)
     return genes
 
